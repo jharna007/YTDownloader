@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">YTDownloader</string>
+    <string name="download_mp4">Download MP4</string>
+    <string name="download_mp3">Download MP3</string>
+    <string name="enter_url">Enter YouTube URL</string>
+    <string name="downloading">Downloading...</string>
+    <string name="download_complete">Download Complete</string>
+    <string name="download_failed">Download Failed</string>
+    <string name="invalid_url">Invalid URL</string>
+    <string name="permission_required">Storage permission required</string>
+    <string name="preparing_tools">Preparing download tools...</string>
+</resources>

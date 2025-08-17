@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude binaries and cache -->
+    <exclude domain="file" path="yt-dlp" />
+    <exclude domain="file" path="ffmpeg" />
+</full-backup-content>
