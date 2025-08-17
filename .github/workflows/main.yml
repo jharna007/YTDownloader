@@ -25,6 +25,9 @@ jobs:
       with:
         gradle-version: 8.4
 
+    - name: Make gradlew executable
+      run: chmod +x ./gradlew
+
     - name: Build debug APK
       run: ./gradlew assembleDebug
 
@@ -33,4 +36,3 @@ jobs:
       with:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
-
