@@ -81,7 +81,7 @@ class MainActivity : AppCompatActivity() {
                 updateStatus(getString(R.string.ready_to_download))
             } catch (e: Exception) {
                 Log.e("MainActivity", "Initialization failed", e)
-                updateStatus("Initialization failed: \${e.message}")
+                updateStatus("Initialization failed: ${}e.message}")
             }
         }
     }
@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
             downloadDir.mkdirs()
         }
 
-        updateStatus("Download directory: \${downloadDir.absolutePath}")
+        updateStatus("Download directory: ${}downloadDir.absolutePath}")
     }
 
     private suspend fun copyBinaries() {
@@ -159,7 +159,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    updateStatus("Failed to copy binaries: \${e.message}")
+                    updateStatus("Failed to copy binaries: ${}e.message}")
                 }
                 throw e
             }
@@ -170,13 +170,13 @@ class MainActivity : AppCompatActivity() {
         if (url.isEmpty()) return false
 
         val youtubePatterns = listOf(
-            Pattern.compile(".*youtube\.com/watch\?v=.*"),
-            Pattern.compile(".*youtu\.be/.*"),
-            Pattern.compile(".*youtube\.com/shorts/.*"),
-            Pattern.compile(".*m\.youtube\.com/watch\?v=.*")
+            Regex(""".*https?://(www\.)?youtube\.com/watch\?v=.*""", RegexOption.IGNORE_CASE),
+            Regex(""".*https?://youtu\.be/.*""", RegexOption.IGNORE_CASE),
+            Regex(""".*https?://(www\.)?youtube\.com/shorts/.*""", RegexOption.IGNORE_CASE),
+            Regex(""".*https?://m\.youtube\.com/watch\?v=.*""", RegexOption.IGNORE_CASE)
         )
 
-        return youtubePatterns.any { it.matcher(url).matches() }
+        return youtubePatterns.any { it.matches(url) }
     }
 
     private fun downloadVideo(url: String, format: String) {
@@ -202,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Log.e("MainActivity", "Download error", e)
-                updateStatus("Download error: \${e.message}")
+                updateStatus("Download error: ${}e.message}")
                 Toast.makeText(this@MainActivity, "Download error!", Toast.LENGTH_SHORT).show()
             } finally {
                 binding.progressBar.visibility = View.GONE
@@ -214,7 +214,7 @@ class MainActivity : AppCompatActivity() {
         return executeCommand(listOf(
             ytDlpPath,
             "-f", "best[ext=mp4]/best",
-            "-o", "\${downloadDir.absolutePath}/%(title)s.%(ext)s",
+            "-o", "${}downloadDir.absolutePath}/%(title)s.%(ext)s",
             url
         ))
     }
@@ -224,7 +224,7 @@ class MainActivity : AppCompatActivity() {
             ytDlpPath,
             "--extract-audio",
             "--audio-format", "mp3",
-            "-o", "\${downloadDir.absolutePath}/%(title)s.%(ext)s",
+            "-o", "${}downloadDir.absolutePath}/%(title)s.%(ext)s",
             url
         ))
     }
@@ -261,13 +261,13 @@ class MainActivity : AppCompatActivity() {
 
             val exitCode = process.exitValue()
             runOnUiThread {
-                updateStatus("Process finished with exit code: \$exitCode")
+                updateStatus("Process finished with exit code: $exitCode")
             }
 
             exitCode == 0
         } catch (e: Exception) {
             runOnUiThread {
-                updateStatus("Command execution failed: \${e.message}")
+                updateStatus("Command execution failed: ${}e.message}")
             }
             false
         }
