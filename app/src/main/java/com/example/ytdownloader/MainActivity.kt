@@ -48,7 +48,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupUI() {
         binding.downloadMp4Button.setOnClickListener {
-            val url = binding.urlEditText.text.toString().trim()
+            val input = binding.urlEditText.text.toString().trim()
+            val url = normalizedUrl(input)
             if (validateUrl(url)) {
                 downloadVideo(url, "mp4")
             } else {
@@ -57,7 +58,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.downloadMp3Button.setOnClickListener {
-            val url = binding.urlEditText.text.toString().trim()
+            val input = binding.urlEditText.text.toString().trim()
+            val url = normalizedUrl(input)
             if (validateUrl(url)) {
                 downloadVideo(url, "mp3")
             } else {
@@ -121,25 +123,22 @@ class MainActivity : AppCompatActivity() {
         withContext(Dispatchers.IO) {
             try {
                 val ytDlpFile = File(filesDir, "yt-dlp")
-                if (!ytDlpFile.exists()) {
-                    assets.open("yt-dlp").use { input ->
-                        FileOutputStream(ytDlpFile).use { output ->
-                            input.copyTo(output)
-                        }
+                assets.open("yt-dlp").use { input ->
+                    FileOutputStream(ytDlpFile).use { output ->
+                        input.copyTo(output)
                     }
-                    ytDlpFile.setExecutable(true)
                 }
-                ytDlpPath = ytDlpFile.absolutePath
+                setExecutable(ytDlpFile)
 
                 val ffmpegFile = File(filesDir, "ffmpeg")
-                if (!ffmpegFile.exists()) {
-                    assets.open("ffmpeg").use { input ->
-                        FileOutputStream(ffmpegFile).use { output ->
-                            input.copyTo(output)
-                        }
+                assets.open("ffmpeg").use { input ->
+                    FileOutputStream(ffmpegFile).use { output ->
+                        input.copyTo(output)
                     }
-                    ffmpegFile.setExecutable(true)
                 }
+                setExecutable(ffmpegFile)
+
+                ytDlpPath = ytDlpFile.absolutePath
                 ffmpegPath = ffmpegFile.absolutePath
 
                 withContext(Dispatchers.Main) {
@@ -154,17 +153,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setExecutable(file: File) {
+        file.setReadable(true, true)
+        file.setWritable(true, true)
+        file.setExecutable(true, true)
+        try {
+            ProcessBuilder("chmod", "0755", file.absolutePath)
+                .redirectErrorStream(true)
+                .start()
+                .waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (_: Exception) {
+            // ignore
+        }
+    }
+
+    private fun normalizedUrl(raw: String): String {
+        var url = raw.trim()
+        if (url.isEmpty()) return ""
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = "https://$url"
+        }
+        // Normalize Shorts to watch form
+        val shortsRegex = Regex("""https?://(www\.)?youtube\.com/shorts/([A-Za-z0-9_\-]+)""", RegexOption.IGNORE_CASE)
+        val m = shortsRegex.find(url)
+        if (m != null) {
+            val videoId = m.groupValues[2]
+            url = "https://www.youtube.com/watch?v=$videoId"
+        }
+        return url
+    }
+
     private fun validateUrl(url: String): Boolean {
         if (url.isEmpty()) return false
-
-        val youtubePatterns = listOf(
-            Regex(""".*https?://(www\.)?youtube\.com/watch\?v=.*""", RegexOption.IGNORE_CASE),
-            Regex(""".*https?://youtu\.be/.*""", RegexOption.IGNORE_CASE),
-            Regex(""".*https?://(www\.)?youtube\.com/shorts/.*""", RegexOption.IGNORE_CASE),
-            Regex(""".*https?://m\.youtube\.com/watch\?v=.*""", RegexOption.IGNORE_CASE)
+        val patterns = listOf(
+            Regex(""".*https?://(www\.)?youtube\.com/watch\?v=[^&\s]+.*""", RegexOption.IGNORE_CASE),
+            Regex(""".*https?://youtu\.be/[^?\s]+.*""", RegexOption.IGNORE_CASE),
+            Regex(""".*https?://(www\.)?youtube\.com/shorts/[^?\s]+.*""", RegexOption.IGNORE_CASE),
+            Regex(""".*https?://m\.youtube\.com/watch\?v=[^&\s]+.*""", RegexOption.IGNORE_CASE)
         )
-
-        return youtubePatterns.any { it.matches(url) }
+        return patterns.any { it.matches(url) }
     }
 
     private fun downloadVideo(url: String, format: String) {
@@ -225,40 +252,40 @@ class MainActivity : AppCompatActivity() {
         return try {
             val processBuilder = ProcessBuilder(command)
             processBuilder.redirectErrorStream(true)
-
             val process = processBuilder.start()
 
             val outputReader = Thread {
                 process.inputStream.bufferedReader().use { reader ->
                     reader.lineSequence().forEach { line ->
-                        runOnUiThread {
-                            updateStatus(line)
-                        }
+                        runOnUiThread { updateStatus(line) }
                     }
                 }
             }
             outputReader.start()
 
-            val finished = process.waitFor(300, TimeUnit.SECONDS)
-
+            val finished = process.waitFor(600, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
-                runOnUiThread {
-                    updateStatus("Download timeout - process terminated")
-                }
+                runOnUiThread { updateStatus("Download timeout - process terminated") }
                 return false
             }
 
             val exitCode = process.exitValue()
-            runOnUiThread {
-                updateStatus("Process finished with exit code: $exitCode")
-            }
-
+            runOnUiThread { updateStatus("Process finished with exit code: $exitCode") }
             exitCode == 0
-        } catch (e: Exception) {
-            runOnUiThread {
-                updateStatus("Command execution failed: ${e.message}")
+        } catch (e: java.io.IOException) {
+            val msg = e.message ?: "IO error"
+            val hint = when {
+                msg.contains("Permission denied", ignoreCase = true) ->
+                    " (hint: ensure yt-dlp/ffmpeg are Android aarch64 and marked executable)"
+                msg.contains("No such file", ignoreCase = true) ->
+                    " (hint: path or filename incorrect after copy)"
+                else -> ""
             }
+            runOnUiThread { updateStatus("Command execution failed: $msg$hint") }
+            false
+        } catch (e: Exception) {
+            runOnUiThread { updateStatus("Command execution failed: ${e.message}") }
             false
         }
     }
@@ -272,7 +299,6 @@ class MainActivity : AppCompatActivity() {
                 "$currentText\n$message"
             }
             binding.statusTextView.text = newText
-
             binding.statusScrollView.post {
                 binding.statusScrollView.fullScroll(View.FOCUS_DOWN)
             }
