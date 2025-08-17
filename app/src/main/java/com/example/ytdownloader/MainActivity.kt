@@ -81,7 +81,7 @@ class MainActivity : AppCompatActivity() {
                 updateStatus(getString(R.string.ready_to_download))
             } catch (e: Exception) {
                 Log.e("MainActivity", "Initialization failed", e)
-                updateStatus("Initialization failed: ${}e.message}")
+                updateStatus("Initialization failed: e.message}")
             }
         }
     }
@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
             downloadDir.mkdirs()
         }
 
-        updateStatus("Download directory: ${}downloadDir.absolutePath}")
+        updateStatus("Download directory: downloadDir.absolutePath}")
     }
 
     private suspend fun copyBinaries() {
@@ -159,7 +159,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    updateStatus("Failed to copy binaries: ${}e.message}")
+                    updateStatus("Failed to copy binaries: e.message}")
                 }
                 throw e
             }
@@ -167,126 +167,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun validateUrl(url: String): Boolean {
-        if (url.isEmpty()) return false
+    if (url.isEmpty()) return false
 
-        val youtubePatterns = listOf(
-            Regex(""".*https?://(www\.)?youtube\.com/watch\?v=.*""", RegexOption.IGNORE_CASE),
-            Regex(""".*https?://youtu\.be/.*""", RegexOption.IGNORE_CASE),
-            Regex(""".*https?://(www\.)?youtube\.com/shorts/.*""", RegexOption.IGNORE_CASE),
-            Regex(""".*https?://m\.youtube\.com/watch\?v=.*""", RegexOption.IGNORE_CASE)
-        )
+    val youtubePatterns = listOf(
+        Regex(""".*https?://(www\.)?youtube\.com/watch\?v=.*""", RegexOption.IGNORE_CASE),
+        Regex(""".*https?://youtu\.be/.*""", RegexOption.IGNORE_CASE),
+        Regex(""".*https?://(www\.)?youtube\.com/shorts/.*""", RegexOption.IGNORE_CASE),
+        Regex(""".*https?://m\.youtube\.com/watch\?v=.*""", RegexOption.IGNORE_CASE)
+    )
 
-        return youtubePatterns.any { it.matches(url) }
-    }
-
-    private fun downloadVideo(url: String, format: String) {
-        lifecycleScope.launch {
-            try {
-                binding.progressBar.visibility = View.VISIBLE
-                updateStatus("Starting download...")
-
-                val success = withContext(Dispatchers.IO) {
-                    when (format) {
-                        "mp4" -> downloadMp4(url)
-                        "mp3" -> downloadMp3(url)
-                        else -> false
-                    }
-                }
-
-                if (success) {
-                    updateStatus(getString(R.string.download_complete))
-                    Toast.makeText(this@MainActivity, "Download completed!", Toast.LENGTH_SHORT).show()
-                } else {
-                    updateStatus(getString(R.string.download_failed))
-                    Toast.makeText(this@MainActivity, "Download failed!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Download error", e)
-                updateStatus("Download error: ${}e.message}")
-                Toast.makeText(this@MainActivity, "Download error!", Toast.LENGTH_SHORT).show()
-            } finally {
-                binding.progressBar.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun downloadMp4(url: String): Boolean {
-        return executeCommand(listOf(
-            ytDlpPath,
-            "-f", "best[ext=mp4]/best",
-            "-o", "${}downloadDir.absolutePath}/%(title)s.%(ext)s",
-            url
-        ))
-    }
-
-    private fun downloadMp3(url: String): Boolean {
-        return executeCommand(listOf(
-            ytDlpPath,
-            "--extract-audio",
-            "--audio-format", "mp3",
-            "-o", "${}downloadDir.absolutePath}/%(title)s.%(ext)s",
-            url
-        ))
-    }
-
-    private fun executeCommand(command: List<String>): Boolean {
-        return try {
-            val processBuilder = ProcessBuilder(command)
-            processBuilder.redirectErrorStream(true)
-
-            val process = processBuilder.start()
-
-            // Read output in a separate thread
-            val outputReader = Thread {
-                process.inputStream.bufferedReader().use { reader ->
-                    reader.lineSequence().forEach { line ->
-                        runOnUiThread {
-                            updateStatus(line)
-                        }
-                    }
-                }
-            }
-            outputReader.start()
-
-            // Wait for process with timeout
-            val finished = process.waitFor(300, TimeUnit.SECONDS)
-
-            if (!finished) {
-                process.destroyForcibly()
-                runOnUiThread {
-                    updateStatus("Download timeout - process terminated")
-                }
-                return false
-            }
-
-            val exitCode = process.exitValue()
-            runOnUiThread {
-                updateStatus("Process finished with exit code: $exitCode")
-            }
-
-            exitCode == 0
-        } catch (e: Exception) {
-            runOnUiThread {
-                updateStatus("Command execution failed: ${}e.message}")
-            }
-            false
-        }
-    }
-
-    private fun updateStatus(message: String) {
-        runOnUiThread {
-            val currentText = binding.statusTextView.text.toString()
-            val newText = if (currentText == getString(R.string.ready_to_download)) {
-                message
-            } else {
-                "\$currentText\n\$message"
-            }
-            binding.statusTextView.text = newText
-
-            // Auto-scroll to bottom
-            binding.statusScrollView.post {
-                binding.statusScrollView.fullScroll(View.FOCUS_DOWN)
-            }
-        }
-    }
+    return youtubePatterns.any { it.matches(url) }
 }
