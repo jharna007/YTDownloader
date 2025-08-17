@@ -1,12 +1,14 @@
 <resources>
     <string name="app_name">YTDownloader</string>
+    <string name="app_title">YouTube Downloader</string>
+    <string name="url_hint">Enter YouTube URL</string>
     <string name="download_mp4">Download MP4</string>
     <string name="download_mp3">Download MP3</string>
-    <string name="enter_url">Enter YouTube URL</string>
+    <string name="ready_to_download">Ready to download. Enter a YouTube URL and select format.</string>
+    <string name="initializing">Initializing download tools...</string>
     <string name="downloading">Downloading...</string>
-    <string name="download_complete">Download Complete</string>
-    <string name="download_failed">Download Failed</string>
-    <string name="invalid_url">Invalid URL</string>
-    <string name="permission_required">Storage permission required</string>
-    <string name="preparing_tools">Preparing download tools...</string>
+    <string name="download_complete">Download complete!</string>
+    <string name="download_failed">Download failed. Check the URL and try again.</string>
+    <string name="invalid_url">Please enter a valid YouTube URL</string>
+    <string name="permission_required">Storage permission is required to download files</string>
 </resources>

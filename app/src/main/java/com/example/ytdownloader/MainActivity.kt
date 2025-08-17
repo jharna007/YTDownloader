@@ -1,39 +1,44 @@
 package com.example.ytdownloader
 
 import android.Manifest
-import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.provider.MediaStore
 import android.util.Log
+import android.util.Patterns
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.ytdownloader.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.*
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.URL
 import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private val TAG = "YTDownloader"
+    private lateinit var ytDlpPath: String
+    private lateinit var ffmpegPath: String
+    private lateinit var downloadDir: File
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val granted = permissions.values.all { it }
-        if (granted) {
-            updateStatus("Permissions granted. Ready to download.")
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            updateStatus("Permissions granted")
         } else {
-            updateStatus("Storage permission required for downloads.")
-            Toast.makeText(this, "Storage permission is required", Toast.LENGTH_LONG).show()
+            updateStatus("Some permissions were denied. App may not function properly.")
         }
     }
 
@@ -43,261 +48,245 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupUI()
-        checkAndRequestPermissions()
-        initializeTools()
+        initializeApp()
     }
 
     private fun setupUI() {
-        binding.btnDownloadMp4.setOnClickListener {
-            val url = binding.etUrl.text.toString().trim()
-            if (isValidYouTubeUrl(url)) {
-                downloadVideo(url, false)
+        binding.downloadMp4Button.setOnClickListener {
+            val url = binding.urlEditText.text.toString().trim()
+            if (validateUrl(url)) {
+                downloadVideo(url, "mp4")
             } else {
-                updateStatus("Please enter a valid YouTube URL")
-                Toast.makeText(this, "Invalid YouTube URL", Toast.LENGTH_SHORT).show()
+                updateStatus(getString(R.string.invalid_url))
             }
         }
 
-        binding.btnDownloadMp3.setOnClickListener {
-            val url = binding.etUrl.text.toString().trim()
-            if (isValidYouTubeUrl(url)) {
-                downloadVideo(url, true)
+        binding.downloadMp3Button.setOnClickListener {
+            val url = binding.urlEditText.text.toString().trim()
+            if (validateUrl(url)) {
+                downloadVideo(url, "mp3")
             } else {
-                updateStatus("Please enter a valid YouTube URL")
-                Toast.makeText(this, "Invalid YouTube URL", Toast.LENGTH_SHORT).show()
+                updateStatus(getString(R.string.invalid_url))
             }
         }
     }
 
-    private fun isValidYouTubeUrl(url: String): Boolean {
-        return url.contains("youtube.com/watch") || 
-               url.contains("youtu.be/") || 
-               url.contains("youtube.com/shorts/")
+    private fun initializeApp() {
+        lifecycleScope.launch {
+            try {
+                updateStatus(getString(R.string.initializing))
+                setupPermissions()
+                setupDirectories()
+                copyBinaries()
+                updateStatus(getString(R.string.ready_to_download))
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Initialization failed", e)
+                updateStatus("Initialization failed: \${e.message}")
+            }
+        }
     }
 
-    private fun checkAndRequestPermissions() {
+    private fun setupPermissions() {
         val permissions = mutableListOf<String>()
 
+        // Add permissions based on Android version
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) 
-                != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
-            }
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) 
-                != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            // Android 6-12
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) 
-                != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            }
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) 
-                != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
+            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
         }
 
-        if (permissions.isNotEmpty()) {
-            requestPermissionLauncher.launch(permissions.toTypedArray())
+        // Check if permissions need to be requested
+        val permissionsToRequest = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (permissionsToRequest.isNotEmpty()) {
+            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 
-    private fun initializeTools() {
-        lifecycleScope.launch {
-            updateStatus("Initializing download tools...")
-            try {
-                copyAssetToInternalStorage("yt-dlp", "yt-dlp")
-                copyAssetToInternalStorage("ffmpeg", "ffmpeg")
-
-                val ytDlpFile = File(filesDir, "yt-dlp")
-                val ffmpegFile = File(filesDir, "ffmpeg")
-
-                // Make files executable
-                ytDlpFile.setExecutable(true)
-                ffmpegFile.setExecutable(true)
-
-                updateStatus("Tools initialized successfully. Ready to download.")
-                Log.d(TAG, "yt-dlp and ffmpeg copied and made executable")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to initialize tools", e)
-                updateStatus("Failed to initialize download tools: $${e.message}")
-            }
-        }
-    }
-
-    private suspend fun copyAssetToInternalStorage(assetName: String, fileName: String) = withContext(Dispatchers.IO) {
-        try {
-            val inputStream = assets.open(assetName)
-            val outputFile = File(filesDir, fileName)
-
-            if (!outputFile.exists()) {
-                val outputStream = FileOutputStream(outputFile)
-                inputStream.copyTo(outputStream)
-                inputStream.close()
-                outputStream.close()
-                Log.d(TAG, "Copied $$assetName to $$fileName")
-            } else {
-                Log.d(TAG, "$$fileName already exists")
-            }
-        } catch (e: IOException) {
-            Log.e(TAG, "Failed to copy $$assetName", e)
-            throw e
-        }
-    }
-
-    private fun downloadVideo(url: String, audioOnly: Boolean) {
-        if (!hasStoragePermission()) {
-            checkAndRequestPermissions()
-            return
-        }
-
-        lifecycleScope.launch {
-            try {
-                binding.progressBar.visibility = View.VISIBLE
-                binding.btnDownloadMp4.isEnabled = false
-                binding.btnDownloadMp3.isEnabled = false
-
-                val format = if (audioOnly) "MP3" else "MP4"
-                updateStatus("Starting $$format download...")
-
-                val success = withContext(Dispatchers.IO) {
-                    executeDownload(url, audioOnly)
-                }
-
-                if (success) {
-                    updateStatus("$$format download completed successfully!")
-                    Toast.makeText(this@MainActivity, "Download completed!", Toast.LENGTH_SHORT).show()
-                } else {
-                    updateStatus("Download failed. Please check the URL and try again.")
-                    Toast.makeText(this@MainActivity, "Download failed", Toast.LENGTH_SHORT).show()
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Download error", e)
-                updateStatus("Download error: $${e.message}")
-                Toast.makeText(this@MainActivity, "Download error: $${e.localizedMessage}", Toast.LENGTH_LONG).show()
-            } finally {
-                binding.progressBar.visibility = View.GONE
-                binding.btnDownloadMp4.isEnabled = true
-                binding.btnDownloadMp3.isEnabled = true
-            }
-        }
-    }
-
-    private suspend fun executeDownload(url: String, audioOnly: Boolean): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val ytDlpPath = File(filesDir, "yt-dlp").absolutePath
-            val downloadsDir = getDownloadsDirectory()
-
-            // Get video info first
-            updateStatus("Fetching video information...")
-            val titleCommand = listOf(
-                ytDlpPath,
-                "--get-title",
-                url
-            )
-
-            val titleResult = executeCommand(titleCommand)
-            val videoTitle = titleResult.output.trim().take(50).replace(Regex("[^a-zA-Z0-9\s_-]"), "")
-
-            if (audioOnly) {
-                // Download audio and convert to MP3
-                updateStatus("Downloading audio...")
-                val audioCommand = listOf(
-                    ytDlpPath,
-                    "-f", "bestaudio[ext=m4a]/bestaudio",
-                    "--extract-audio",
-                    "--audio-format", "mp3",
-                    "--audio-quality", "192K",
-                    "-o", "$${downloadsDir.absolutePath}/$$videoTitle.%(ext)s",
-                    url
-                )
-
-                val audioResult = executeCommand(audioCommand)
-                return@withContext audioResult.exitCode == 0
-            } else {
-                // Download video (MP4)
-                updateStatus("Downloading video...")
-                val videoCommand = listOf(
-                    ytDlpPath,
-                    "-f", "best[ext=mp4]/best",
-                    "-o", "$${downloadsDir.absolutePath}/$$videoTitle.%(ext)s",
-                    url
-                )
-
-                val videoResult = executeCommand(videoCommand)
-                return@withContext videoResult.exitCode == 0
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Execute download error", e)
-            return@withContext false
-        }
-    }
-
-    private fun executeCommand(command: List<String>): CommandResult {
-        return try {
-            Log.d(TAG, "Executing command: $${command.joinToString(" ")}")
-
-            val processBuilder = ProcessBuilder(command)
-            processBuilder.redirectErrorStream(true)
-
-            val process = processBuilder.start()
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-
-            val exitCode = if (process.waitFor(120, TimeUnit.SECONDS)) {
-                process.exitValue()
-            } else {
-                process.destroyForcibly()
-                -1
-            }
-
-            Log.d(TAG, "Command output: $$output")
-            Log.d(TAG, "Exit code: $$exitCode")
-
-            CommandResult(exitCode, output)
-        } catch (e: Exception) {
-            Log.e(TAG, "Command execution failed", e)
-            CommandResult(-1, e.message ?: "Unknown error")
-        }
-    }
-
-    private fun getDownloadsDirectory(): File {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10+ - use scoped storage
+    private fun setupDirectories() {
+        // Setup download directory based on Android version
+        downloadDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android 10+ (Scoped Storage)
             File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "YTDownloader")
         } else {
             // Android 9 and below
             File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "YTDownloader")
-        }.apply {
-            if (!exists()) {
-                mkdirs()
+        }
+
+        if (!downloadDir.exists()) {
+            downloadDir.mkdirs()
+        }
+
+        updateStatus("Download directory: \${downloadDir.absolutePath}")
+    }
+
+    private suspend fun copyBinaries() {
+        withContext(Dispatchers.IO) {
+            try {
+                // Copy yt-dlp
+                val ytDlpFile = File(filesDir, "yt-dlp")
+                if (!ytDlpFile.exists()) {
+                    assets.open("yt-dlp").use { input ->
+                        FileOutputStream(ytDlpFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    ytDlpFile.setExecutable(true)
+                }
+                ytDlpPath = ytDlpFile.absolutePath
+
+                // Copy ffmpeg
+                val ffmpegFile = File(filesDir, "ffmpeg")
+                if (!ffmpegFile.exists()) {
+                    assets.open("ffmpeg").use { input ->
+                        FileOutputStream(ffmpegFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    ffmpegFile.setExecutable(true)
+                }
+                ffmpegPath = ffmpegFile.absolutePath
+
+                withContext(Dispatchers.Main) {
+                    updateStatus("Binaries copied and ready")
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    updateStatus("Failed to copy binaries: \${e.message}")
+                }
+                throw e
             }
         }
     }
 
-    private fun hasStoragePermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
+    private fun validateUrl(url: String): Boolean {
+        if (url.isEmpty()) return false
+
+        val youtubePatterns = listOf(
+            Pattern.compile(".*youtube\.com/watch\?v=.*"),
+            Pattern.compile(".*youtu\.be/.*"),
+            Pattern.compile(".*youtube\.com/shorts/.*"),
+            Pattern.compile(".*m\.youtube\.com/watch\?v=.*")
+        )
+
+        return youtubePatterns.any { it.matcher(url).matches() }
+    }
+
+    private fun downloadVideo(url: String, format: String) {
+        lifecycleScope.launch {
+            try {
+                binding.progressBar.visibility = View.VISIBLE
+                updateStatus("Starting download...")
+
+                val success = withContext(Dispatchers.IO) {
+                    when (format) {
+                        "mp4" -> downloadMp4(url)
+                        "mp3" -> downloadMp3(url)
+                        else -> false
+                    }
+                }
+
+                if (success) {
+                    updateStatus(getString(R.string.download_complete))
+                    Toast.makeText(this@MainActivity, "Download completed!", Toast.LENGTH_SHORT).show()
+                } else {
+                    updateStatus(getString(R.string.download_failed))
+                    Toast.makeText(this@MainActivity, "Download failed!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Download error", e)
+                updateStatus("Download error: \${e.message}")
+                Toast.makeText(this@MainActivity, "Download error!", Toast.LENGTH_SHORT).show()
+            } finally {
+                binding.progressBar.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun downloadMp4(url: String): Boolean {
+        return executeCommand(listOf(
+            ytDlpPath,
+            "-f", "best[ext=mp4]/best",
+            "-o", "\${downloadDir.absolutePath}/%(title)s.%(ext)s",
+            url
+        ))
+    }
+
+    private fun downloadMp3(url: String): Boolean {
+        return executeCommand(listOf(
+            ytDlpPath,
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "-o", "\${downloadDir.absolutePath}/%(title)s.%(ext)s",
+            url
+        ))
+    }
+
+    private fun executeCommand(command: List<String>): Boolean {
+        return try {
+            val processBuilder = ProcessBuilder(command)
+            processBuilder.redirectErrorStream(true)
+
+            val process = processBuilder.start()
+
+            // Read output in a separate thread
+            val outputReader = Thread {
+                process.inputStream.bufferedReader().use { reader ->
+                    reader.lineSequence().forEach { line ->
+                        runOnUiThread {
+                            updateStatus(line)
+                        }
+                    }
+                }
+            }
+            outputReader.start()
+
+            // Wait for process with timeout
+            val finished = process.waitFor(300, TimeUnit.SECONDS)
+
+            if (!finished) {
+                process.destroyForcibly()
+                runOnUiThread {
+                    updateStatus("Download timeout - process terminated")
+                }
+                return false
+            }
+
+            val exitCode = process.exitValue()
+            runOnUiThread {
+                updateStatus("Process finished with exit code: \$exitCode")
+            }
+
+            exitCode == 0
+        } catch (e: Exception) {
+            runOnUiThread {
+                updateStatus("Command execution failed: \${e.message}")
+            }
+            false
         }
     }
 
     private fun updateStatus(message: String) {
         runOnUiThread {
-            binding.tvStatus.text = "$${binding.tvStatus.text}\n$$message"
-            Log.d(TAG, message)
+            val currentText = binding.statusTextView.text.toString()
+            val newText = if (currentText == getString(R.string.ready_to_download)) {
+                message
+            } else {
+                "\$currentText\n\$message"
+            }
+            binding.statusTextView.text = newText
+
+            // Auto-scroll to bottom
+            binding.statusScrollView.post {
+                binding.statusScrollView.fullScroll(View.FOCUS_DOWN)
+            }
         }
     }
-
-    data class CommandResult(
-        val exitCode: Int,
-        val output: String
-    )
 }

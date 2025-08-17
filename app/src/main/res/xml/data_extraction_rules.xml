@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Exclude binaries from cloud backup -->
         <exclude domain="file" path="yt-dlp" />
         <exclude domain="file" path="ffmpeg" />
     </cloud-backup>
     <device-transfer>
+        <!-- Exclude binaries from device transfer -->
         <exclude domain="file" path="yt-dlp" />
         <exclude domain="file" path="ffmpeg" />
     </device-transfer>

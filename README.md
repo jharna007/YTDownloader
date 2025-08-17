@@ -1,77 +1,99 @@
 # YTDownloader
 
-An Android app for downloading YouTube videos and audio using yt-dlp and ffmpeg.
+A simple Android app to download YouTube videos in MP4 or MP3 format using yt-dlp.
 
 ## Features
 
 - Download YouTube videos in MP4 format
-- Extract audio from YouTube videos in MP3 format  
-- Simple and clean UI
-- Works offline after initial setup
-- Supports Android 6.0+ (API 23+)
+- Extract audio and save as MP3
+- Material Design UI
+- Support for Android 6+ (API 23+)
+- Progress tracking and status updates
 
-## Setup
+## Build Instructions
 
-### Prerequisites
+### Local Build
 
-This project requires the actual yt-dlp and ffmpeg binaries for Android. The current binaries in `app/src/main/assets/` are placeholders.
+1. Clone this repository
+2. Open in Android Studio or use command line
+3. Replace stub binaries (see Binary Setup below)
+4. Build using Gradle:
 
-#### Getting Real Binaries
-
-1. **yt-dlp**: Download the Linux ARM64 version from [yt-dlp releases](https://github.com/yt-dlp/yt-dlp/releases)
-2. **ffmpeg**: Download from [FFmpeg Kit](https://github.com/arthenica/ffmpeg-kit/releases) or compile from source
-
-#### Replacing Placeholder Files
-
-Replace these files with the actual binaries:
-- `app/src/main/assets/yt-dlp` 
-- `app/src/main/assets/ffmpeg`
-
-Make sure the binaries are:
-- Compiled for Android ARM64/ARM architectures
-- Executable on Android systems
-- Include all required dependencies
-
-### Building
-
-1. Open the project in Android Studio
-2. Sync project with Gradle files
-3. Build and run on device or emulator
-
-Or build from command line:
 ```bash
 ./gradlew assembleDebug
 ```
 
-### GitHub Actions
+### CI Build
 
-The project includes a GitHub Actions workflow that automatically builds APKs on push/PR.
+The project includes a GitHub Actions workflow that automatically builds the APK on push/PR to main branch.
+
+## Binary Setup
+
+**IMPORTANT**: This project includes stub executables for yt-dlp and ffmpeg that will allow the app to compile and run, but won't actually download videos. To make the app functional, you need to replace these with real ARM64 Android binaries.
+
+### Replacing Stub Binaries
+
+1. **Install Termux** on your Android device or use a Linux environment with ARM64 Android binaries
+2. **Get yt-dlp binary**:
+   - Termux: `pkg install yt-dlp`, then `which yt-dlp`
+   - Or download ARM64 Android binary from: https://github.com/yt-dlp/yt-dlp/releases
+3. **Get ffmpeg binary**:
+   - Termux: `pkg install ffmpeg`, then `which ffmpeg`
+   - Or use a pre-built ARM64 Android ffmpeg binary
+4. **Replace the stubs**:
+   - Copy the real yt-dlp binary to `app/src/main/assets/yt-dlp`
+   - Copy the real ffmpeg binary to `app/src/main/assets/ffmpeg`
+   - Ensure both files have executable permissions
+
+### Why Stubs?
+
+The real yt-dlp and ffmpeg binaries are quite large (20-50MB each) and would make this repository very heavy. The stubs allow the project to:
+- Build successfully in CI
+- Initialize without crashing
+- Show clear error messages when download is attempted
+
+## Download Locations
+
+Downloaded files are saved to:
+
+- **Android 10+**: `/Android/data/com.example.ytdownloader/files/Downloads/YTDownloader/`
+- **Android 9 and below**: `/storage/emulated/0/Downloads/YTDownloader/`
 
 ## Permissions
 
-The app requests these permissions:
-- `INTERNET` - For downloading videos
-- `WRITE_EXTERNAL_STORAGE` - For saving files (Android 9 and below)
-- `READ_MEDIA_VIDEO` / `READ_MEDIA_AUDIO` - For accessing downloads (Android 13+)
+The app requests the following permissions:
+
+- `INTERNET` - Download videos from YouTube
+- `ACCESS_NETWORK_STATE` - Check network connectivity
+- `WRITE_EXTERNAL_STORAGE` (Android 9 and below) - Save files to Downloads
+- `READ_EXTERNAL_STORAGE` - Read downloaded files
+- `READ_MEDIA_VIDEO` (Android 13+) - Access video files
+- `READ_MEDIA_AUDIO` (Android 13+) - Access audio files
+
+## Usage
+
+1. Launch the app
+2. Paste a YouTube URL (supports youtube.com/watch, youtu.be, youtube.com/shorts)
+3. Choose Download MP4 or Download MP3
+4. Monitor progress in the status area
+5. Find downloaded files in the Downloads/YTDownloader folder
 
 ## Technical Details
 
-- **Target SDK**: 34 (Android 14)
-- **Minimum SDK**: 23 (Android 6.0)
 - **Language**: Kotlin
-- **Build System**: Gradle
-- **Architecture**: Uses native binaries via ProcessBuilder
+- **UI**: ViewBinding with Material Design
+- **Min SDK**: 23 (Android 6.0)
+- **Target SDK**: 34 (Android 14)
+- **Build System**: Gradle with Groovy DSL
+- **Architecture**: Single Activity with coroutines for background tasks
 
-## Limitations
+## Troubleshooting
 
-- Requires actual yt-dlp and ffmpeg binaries (not included due to size)
-- May not work on all Android device architectures
-- Downloads limited by YouTube's terms of service
+- **"Download failed"**: Make sure you've replaced the stub binaries with real ones
+- **"Permission denied"**: Grant storage permissions when prompted
+- **"Invalid URL"**: Only YouTube URLs are supported
+- **App crashes on download**: Check that binaries are ARM64 compatible and executable
 
 ## Legal Notice
 
-This app is for educational purposes. Users are responsible for complying with YouTube's Terms of Service and applicable copyright laws.
-
-## License
-
-This project is provided as-is for educational purposes.
+This app is for educational purposes. Users are responsible for complying with YouTube's Terms of Service and applicable copyright laws when downloading content.
